@@ -37,6 +37,12 @@
     ".cp-r code{display:block;font:12.5px/1.45 var(--mono);margin-top:2px;overflow-wrap:anywhere}" +
     ".cp-pre{margin:0;padding:9px 11px;border-radius:var(--radius,8px);background:var(--bg);font:12.5px/1.5 var(--mono);white-space:pre-wrap;overflow:auto}.cp-pre.er{background:var(--erb);color:var(--er)}" +
     ".cp-x{border:0;background:transparent;color:var(--mut);cursor:pointer;font-size:16px;line-height:1;padding:0 4px}" +
+    ".cp{--sk:#b4457c;--ss:#2f7a3f;--sn:#b86a00;--sc:#8a877d;--sd:#1f5aa6;--sb:#7a4fb0;--sf:#2a6f97;--sa:#c6613f}" +
+    "@media (prefers-color-scheme:dark){:root:not([data-mode=\"light\"]) .cp{--sk:#e58ac0;--ss:#8fd19e;--sn:#f0b45a;--sc:#8b8a85;--sd:#7db3f0;--sb:#b79cf0;--sf:#7fc4e8;--sa:#e8916f}}" +
+    "[data-mode=\"dark\"] .cp{--sk:#e58ac0;--ss:#8fd19e;--sn:#f0b45a;--sc:#8b8a85;--sd:#7db3f0;--sb:#b79cf0;--sf:#7fc4e8;--sa:#e8916f}" +
+    ".cp .t-k{color:var(--sk)}.cp .t-s{color:var(--ss)}.cp .t-n{color:var(--sn)}.cp .t-c{color:var(--sc);font-style:italic}.cp .t-d{color:var(--sd)}.cp .t-b{color:var(--sb)}.cp .t-f{color:var(--sf)}.cp .t-a{color:var(--sa)}" +
+    ".cp-wrap{position:relative;flex:1;min-width:0}.cp-hl{position:absolute;top:0;left:0;right:0;bottom:0;margin:0;padding:10px 12px;font:13px/20px var(--mono);white-space:pre;overflow:hidden;pointer-events:none;color:var(--fg);tab-size:4}" +
+    ".cp-wrap .cp-ta{display:block;width:100%;position:relative;background:transparent;color:transparent;caret-color:var(--fg)}.cp-wrap .cp-ta::selection{background:rgba(198,97,63,.28);color:transparent}" +
     ".cp-mut{color:var(--mut);font-size:12.5px}.cp-tabs{display:flex;gap:4px;border-bottom:0.5px solid var(--hair)}.cp button.cp-tab{font:inherit;font-size:13px;border:0;background:transparent;color:var(--mut);padding:5px 12px;border-bottom:2px solid transparent;cursor:pointer;border-radius:0}.cp button.cp-tab.on{color:var(--fg);border-bottom-color:var(--clay)}";
   function el(t, c, x) { var e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; }
   function prog(code, tests) {
@@ -82,6 +88,67 @@
       w.postMessage(src);
     });
   }
+  function mk(a) { var o = {}; a.forEach(function (x) { o[x] = 1; }); return o; }
+  var KW = { py: mk("def class return if elif else for while in not and or is None True False pass break continue import from as try except finally raise with lambda yield global nonlocal assert del async await".split(" ")),
+             js: mk("function const let var return if else for while do in of new class extends import export from async await try catch finally throw switch case break continue default typeof instanceof null undefined true false void delete".split(" ")) };
+  var BI = { py: mk("print len range enumerate sorted min max sum abs str int float list dict set tuple bool isinstance super zip map filter any all reversed open input type".split(" ")),
+             js: mk("console Math Map Set Array Object JSON Number String Promise Date Error parseInt parseFloat isNaN".split(" ")) };
+  var RX = { py: /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?'''|[rRbBfFuU]{0,2}"(?:\\.|[^"\\\n])*"|[rRbBfFuU]{0,2}'(?:\\.|[^'\\\n])*')|(\b\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?\b)|([A-Za-z_]\w*)/g,
+             js: /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\[\s\S]|[^`\\])*`)|(\b\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?\b)|([A-Za-z_$][\w$]*)/g };
+  function esc(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function highlight(code, js) {
+    var k = js ? "js" : "py", re = RX[k], out = "", last = 0, m, prev = "";
+    re.lastIndex = 0;
+    while ((m = re.exec(code))) {
+      out += esc(code.slice(last, m.index)); last = re.lastIndex;
+      var t = m[0], cls = "";
+      if (m[1] !== undefined) { cls = "c"; prev = ""; }
+      else if (m[2] !== undefined) { cls = "s"; prev = ""; }
+      else if (m[3] !== undefined) { cls = "n"; prev = ""; }
+      else {
+        if (KW[k][t]) cls = "k";
+        else if (t === "self" || t === "cls" || t === "this") cls = "a";
+        else if (BI[k][t]) cls = "b";
+        else if (prev === "def" || prev === "class" || prev === "function") cls = "d";
+        else if (code.charAt(last) === "(") cls = "f";
+        prev = t;
+      }
+      out += cls ? '<span class="t-' + cls + '">' + esc(t) + "</span>" : esc(t);
+    }
+    return out + esc(code.slice(last));
+  }
+  function attach(ta, js, onRun, onChange) {
+    var IND = js ? "  " : "    ";
+    function setv(v, a, b) { ta.value = v; ta.selectionStart = a; ta.selectionEnd = b == null ? a : b; onChange(); }
+    ta.addEventListener("keydown", function (e) {
+      var v = ta.value, s = ta.selectionStart, en = ta.selectionEnd;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) return onRun();
+        var ls = v.lastIndexOf("\n", s - 1) + 1, before = v.slice(ls, s), ind = before.match(/^[ \t]*/)[0], code = before.replace(/\s+$/, ""), extra = "", tail = "";
+        var closer = { "{": "}", "(": ")", "[": "]" }[code.slice(-1)];
+        if (closer) { extra = IND; if (v.charAt(en) === closer) tail = "\n" + ind; }
+        else if (!js) {
+          var nc = code.replace(/\s+#[^"']*$/, "");
+          if (/:$/.test(nc)) extra = IND;
+          else if (/^(return|pass|break|continue|raise)\b/.test(code.trim()) && ind.length >= IND.length) ind = ind.slice(IND.length);
+        }
+        var ins = "\n" + ind + extra;
+        setv(v.slice(0, s) + ins + tail + v.slice(en), s + ins.length);
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+        var multi = v.slice(s, en).indexOf("\n") >= 0;
+        if (!e.shiftKey && !multi) { setv(v.slice(0, s) + IND + v.slice(en), s + IND.length); return; }
+        var a = v.lastIndexOf("\n", s - 1) + 1, block = v.slice(a, en), re = new RegExp("^ {1," + IND.length + "}");
+        var nb = block.split("\n").map(function (l) { return e.shiftKey ? l.replace(re, "") : IND + l; }).join("\n");
+        if (s === en) setv(v.slice(0, a) + nb + v.slice(en), Math.max(a, s - (block.length - nb.length)));
+        else setv(v.slice(0, a) + nb + v.slice(en), a, a + nb.length);
+      } else if (e.key === "Backspace" && s === en) {
+        var ls2 = v.lastIndexOf("\n", s - 1) + 1, pre = v.slice(ls2, s);
+        if (pre.length && /^ +$/.test(pre)) { var del = pre.length % IND.length || IND.length; e.preventDefault(); setv(v.slice(0, s - del) + v.slice(s), s - del); }
+      }
+    });
+  }
   function mount(root, cfg) {
     if (!document.getElementById("cp-css")) { var st = el("style"); st.id = "cp-css"; st.textContent = CSS; document.head.appendChild(st); }
     var JS = cfg.lang === "javascript";
@@ -95,12 +162,14 @@
     (cfg.description || "").split("\n\n").forEach(function (p) { if (p) desc.appendChild(el("p", "", p)); });
     (cfg.examples || []).forEach(function (x) { desc.appendChild(el("div", "cp-ex", "Input: " + x.input + "\nOutput: " + x.output + (x.why ? "\n" + x.why : ""))); });
     var ed = el("div", "cp-ed"), gut = el("div", "cp-g"), ta = el("textarea", "cp-ta");
-    ta.spellcheck = false; ta.setAttribute("aria-label", (JS ? "JavaScript" : "Python") + " code"); ta.value = snap; ed.appendChild(gut); ed.appendChild(ta);
+    ta.spellcheck = false; ta.setAttribute("aria-label", (JS ? "JavaScript" : "Python") + " code"); ta.value = snap; var hl = el("pre", "cp-hl"), wrap = el("div", "cp-wrap"); wrap.appendChild(hl); wrap.appendChild(ta); ed.appendChild(gut); ed.appendChild(wrap);
     var noteBox = el("div", "cp-stack");
     var tabs = el("div", "cp-tabs"), tP = el("button", "cp-tab on", "Problem"), tS = el("button", "cp-tab", "Scratchpad");
     tabs.appendChild(tP); tabs.appendChild(tS);
     var scratch = el("div", "cp-stack"); scratch.hidden = true;
-    var sta = el("textarea", "cp-ta"); sta.spellcheck = false; sta.value = JS ? "console.log(\"hello\");\n" : "print(\"hello\")\n"; sta.style.border = "0.5px solid var(--ln)"; sta.style.borderRadius = "var(--radius,8px)"; sta.style.height = "180px"; sta.style.flex = "none";
+    var sta = el("textarea", "cp-ta"); sta.spellcheck = false; sta.value = JS ? "console.log(\"hello\");\n" : "print(\"hello\")\n"; sta.style.height = "180px"; sta.className += " ov"; var shl = el("pre", "cp-hl"), swrap = el("div", "cp-wrap"); swrap.style.flex = "none"; swrap.style.border = "0.5px solid var(--ln)"; swrap.style.borderRadius = "var(--radius,8px)"; swrap.style.overflow = "hidden"; swrap.appendChild(shl); swrap.appendChild(sta);
+    function sRefresh() { shl.innerHTML = highlight(sta.value, JS) + "\n"; shl.scrollTop = sta.scrollTop; shl.scrollLeft = sta.scrollLeft; }
+    sta.addEventListener("input", sRefresh); sta.addEventListener("scroll", sRefresh); sRefresh();
     var sOut = el("pre", "cp-pre"); sOut.hidden = true;
     var sRow = el("div", "cp-bar"), sRun = el("button", "cp-b go", "Run scratchpad");
     sRun.onclick = function () {
@@ -109,11 +178,8 @@
       p.then(function (r) { var o = r.out.split("\n").filter(function (l) { return l.length; }).join("\n"); sOut.className = "cp-pre" + (r.err ? " er" : ""); sOut.textContent = (o ? o + "\n" : "") + (r.err || "") || "(no output)"; });
     };
     sRow.appendChild(sRun); sRow.appendChild(el("span", "cp-mut", "Free practice. No tests, just run and see the output."));
-    scratch.appendChild(sta); scratch.appendChild(sRow); scratch.appendChild(sOut);
-    sta.addEventListener("keydown", function (e) {
-      if (e.key === "Tab") { e.preventDefault(); var s2 = sta.selectionStart; sta.value = sta.value.slice(0, s2) + "    " + sta.value.slice(sta.selectionEnd); sta.selectionStart = sta.selectionEnd = s2 + 4; }
-      else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sRun.click(); }
-    });
+    scratch.appendChild(swrap); scratch.appendChild(sRow); scratch.appendChild(sOut);
+    attach(sta, JS, function () { sRun.click(); }, sRefresh);
     var bar = el("div", "cp-bar");
     function btn(label, cls, fn) { var b = el("button", "cp-b " + (cls || ""), label); b.onclick = fn; return b; }
     var bRun = btn("Run", "", function () { execute(tests.filter(function (t) { return !t[2]; }), "run"); });
@@ -139,6 +205,7 @@
     function sync() {
       var n = ta.value.split("\n").length;
       ta.style.height = Math.min(Math.max(n, 8), 24) * 20 + 20 + "px"; gut.style.height = ta.style.height;
+      hl.innerHTML = highlight(ta.value, JS) + "\n"; hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft;
       gut.innerHTML = "";
       var inner = el("div"); gut.appendChild(inner);
       for (var i = 1; i <= n; i++) {
@@ -161,12 +228,9 @@
         c.appendChild(el("p", "", nt.text)); noteBox.appendChild(c);
       });
     }
-    ta.addEventListener("scroll", function () { var f = gut.firstChild; if (f) f.style.marginTop = -ta.scrollTop + "px"; });
+    ta.addEventListener("scroll", function () { var f = gut.firstChild; if (f) f.style.marginTop = -ta.scrollTop + "px"; hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; });
     ta.addEventListener("input", sync);
-    ta.addEventListener("keydown", function (e) {
-      if (e.key === "Tab") { e.preventDefault(); var s = ta.selectionStart; ta.value = ta.value.slice(0, s) + "    " + ta.value.slice(ta.selectionEnd); ta.selectionStart = ta.selectionEnd = s + 4; sync(); }
-      else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); bRun.click(); }
-    });
+    attach(ta, JS, function () { bRun.click(); }, sync);
     function setStatus(t, k) { status.textContent = t; status.className = "cp-pill " + k; }
     function showHint() {
       if (!hints.length) { hBox.innerHTML = ""; hBox.appendChild(el("div", "cp-mut", "No hints for this one.")); return; }
@@ -246,5 +310,5 @@
     sync();
     return { getCode: function () { return ta.value; } };
   }
-  global.CodePad = { mount: mount, version: "1.1" };
+  global.CodePad = { mount: mount, version: "1.2" };
 })(window);
