@@ -15,7 +15,7 @@
     });
     return skP;
   }
-  var VERSION = "2.0";
+  var VERSION = "2.1";
   var SQL_URL = "https://cdn.jsdelivr.net/npm/sql.js@1.15.1/dist/sql-asm.js";
   var SQL_WASM_URL = "https://cdn.jsdelivr.net/npm/sql.js@1.15.1/dist/sql-wasm-inline.js";
   var LANGS = {
@@ -56,11 +56,19 @@
     "@media (prefers-color-scheme:dark){:root:not([data-mode=\"light\"]) .cp{--sk:#e58ac0;--ss:#8fd19e;--sn:#f0b45a;--sc:#8b8a85;--sd:#7db3f0;--sb:#b79cf0;--sf:#7fc4e8;--sa:#e8916f}}" +
     "[data-mode=\"dark\"] .cp{--sk:#e58ac0;--ss:#8fd19e;--sn:#f0b45a;--sc:#8b8a85;--sd:#7db3f0;--sb:#b79cf0;--sf:#7fc4e8;--sa:#e8916f}" +
     ".cp .t-k{color:var(--sk)}.cp .t-s{color:var(--ss)}.cp .t-n{color:var(--sn)}.cp .t-c{color:var(--sc);font-style:italic}.cp .t-d{color:var(--sd)}.cp .t-b{color:var(--sb)}.cp .t-f{color:var(--sf)}.cp .t-a{color:var(--sa)}" +
-    ".cp-wrap{position:relative;flex:1;min-width:0}.cp-hl{position:absolute;top:0;left:0;right:0;bottom:0;margin:0;padding:10px 12px;font:13px/20px var(--mono);white-space:pre;overflow:hidden;pointer-events:none;color:var(--fg);tab-size:4}" +
+    ".cp-wrap{position:relative;flex:1;min-width:0}.cp-hl{position:absolute;top:0;left:0;right:0;bottom:0;margin:0;padding:10px 12px;font:var(--hfs,13px)/var(--plh,20px) var(--mono);white-space:pre;overflow:hidden;pointer-events:none;color:var(--fg);tab-size:4}" +
     ".cp-wrap .cp-ta{display:block;width:100%;position:relative;background:transparent;color:transparent;caret-color:var(--fg)}.cp-wrap .cp-ta::selection{background:rgba(198,97,63,.28);color:transparent}" +
     ".cp-mut{color:var(--mut);font-size:12.5px}.cp-tabs{display:flex;gap:4px;border-bottom:0.5px solid var(--hair)}.cp button.cp-tab{font:inherit;font-size:13px;border:0;background:transparent;color:var(--mut);padding:5px 12px;border-bottom:2px solid transparent;cursor:pointer;border-radius:0}.cp button.cp-tab.on{color:var(--fg);border-bottom-color:var(--clay)}" +
     ".cp-tw{overflow:auto;max-height:260px;border:0.5px solid var(--hair);border-radius:var(--radius,8px);background:var(--card)}.cp-tbl{border-collapse:collapse;font:12.5px/1.4 var(--mono);width:100%}.cp-tbl th,.cp-tbl td{padding:4px 10px;text-align:left;border-bottom:0.5px solid var(--hair);white-space:nowrap}.cp-tbl th{background:var(--bg);font-weight:500;position:sticky;top:0}.cp-tbl td.nul{color:var(--mut);font-style:italic}" +
-    ".cp select.cp-sel{font:inherit;font-size:12px;padding:2px 8px;border-radius:999px;border:0.5px solid var(--ln);background:var(--bg);color:var(--mut)}";
+    ".cp select.cp-sel{font:inherit;font-size:12px;padding:2px 8px;border-radius:999px;border:0.5px solid var(--ln);background:var(--bg);color:var(--mut)}" +
+    ".cp,.cp *{-webkit-text-size-adjust:100%;text-size-adjust:100%}" +
+    ".cp-ta,.cp-hl{letter-spacing:0;word-spacing:0;font-kerning:none;font-variant-ligatures:none;font-feature-settings:'liga' 0,'calt' 0;text-rendering:auto;overflow-wrap:normal;word-break:normal;text-indent:0;white-space:pre}" +
+    ".cp-plain .cp-hl{display:none}.cp-plain .cp-wrap .cp-ta{color:var(--fg)}";
+  function codeAttrs(t) {
+    t.spellcheck = false;
+    t.setAttribute("wrap", "off"); t.setAttribute("autocapitalize", "off"); t.setAttribute("autocorrect", "off");
+    t.setAttribute("autocomplete", "off"); t.setAttribute("translate", "no"); t.setAttribute("data-gramm", "false");
+  }
   function el(t, c, x) { var e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; }
   function prog(code, tests) {
     var p = code.replace(/\s+$/, "") + "\n\ndef _t(n, f):\n    try:\n        f()\n        print('@@P|' + n)\n    except AssertionError as e:\n        print('@@F|' + n + '|' + (str(e) or 'assertion failed'))\n    except Exception as e:\n        print('@@F|' + n + '|' + e.__class__.__name__ + ': ' + str(e))\n\n";
@@ -246,21 +254,28 @@
   function attach(ta, o, onRun, onChange) {
     var IND = o.ind, py = !!o.colon;
     function setv(v, a, b) { ta.value = v; ta.selectionStart = a; ta.selectionEnd = b == null ? a : b; onChange(); }
+    function enter() {
+      var v = ta.value, s = ta.selectionStart, en = ta.selectionEnd;
+      var ls = v.lastIndexOf("\n", s - 1) + 1, before = v.slice(ls, s), ind = before.match(/^[ \t]*/)[0], code = before.replace(/\s+$/, ""), extra = "", tail = "";
+      var closer = { "{": "}", "(": ")", "[": "]" }[code.slice(-1)];
+      if (closer) { extra = IND; if (v.charAt(en) === closer) tail = "\n" + ind; }
+      else if (py) {
+        var nc = code.replace(/\s+#[^"']*$/, "");
+        if (/:$/.test(nc)) extra = IND;
+        else if (/^(return|pass|break|continue|raise)\b/.test(code.trim()) && ind.length >= IND.length) ind = ind.slice(IND.length);
+      }
+      var ins = "\n" + ind + extra;
+      setv(v.slice(0, s) + ins + tail + v.slice(en), s + ins.length);
+    }
+    ta.addEventListener("beforeinput", function (e) {
+      if ((e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") && !e.isComposing && e.cancelable) { e.preventDefault(); enter(); }
+    });
     ta.addEventListener("keydown", function (e) {
       var v = ta.value, s = ta.selectionStart, en = ta.selectionEnd;
       if (e.key === "Enter") {
         e.preventDefault();
         if (e.ctrlKey || e.metaKey) return onRun();
-        var ls = v.lastIndexOf("\n", s - 1) + 1, before = v.slice(ls, s), ind = before.match(/^[ \t]*/)[0], code = before.replace(/\s+$/, ""), extra = "", tail = "";
-        var closer = { "{": "}", "(": ")", "[": "]" }[code.slice(-1)];
-        if (closer) { extra = IND; if (v.charAt(en) === closer) tail = "\n" + ind; }
-        else if (py) {
-          var nc = code.replace(/\s+#[^"']*$/, "");
-          if (/:$/.test(nc)) extra = IND;
-          else if (/^(return|pass|break|continue|raise)\b/.test(code.trim()) && ind.length >= IND.length) ind = ind.slice(IND.length);
-        }
-        var ins = "\n" + ind + extra;
-        setv(v.slice(0, s) + ins + tail + v.slice(en), s + ins.length);
+        enter();
       } else if (e.key === "Tab") {
         e.preventDefault();
         var multi = v.slice(s, en).indexOf("\n") >= 0;
@@ -330,14 +345,14 @@
     if (!desc.firstChild) desc.hidden = true;
     var ed = el("div", "cp-ed"), gut = el("div", "cp-g"), wrap = el("div", "cp-wrap");
     ta = el("textarea", "cp-ta"); hl = el("pre", "cp-hl");
-    ta.spellcheck = false; ta.setAttribute("aria-label", LB + " code"); ta.value = snap;
+    codeAttrs(ta); ta.setAttribute("aria-label", LB + " code"); ta.value = snap;
     wrap.appendChild(hl); wrap.appendChild(ta); ed.appendChild(gut); ed.appendChild(wrap);
     var noteBox = el("div", "cp-stack");
     var tabs = el("div", "cp-tabs"), tP = el("button", "cp-tab on", "Problem"), tS = el("button", "cp-tab", "Scratchpad");
     tabs.appendChild(tP); tabs.appendChild(tS);
     var scratch = el("div", "cp-stack"); scratch.hidden = true;
     var sta = el("textarea", "cp-ta"), shl = el("pre", "cp-hl"), swrap = el("div", "cp-wrap");
-    sta.spellcheck = false; sta.value = SCR[L]; sta.style.height = "180px"; sta.className += " ov";
+    codeAttrs(sta); sta.value = SCR[L]; sta.style.height = "180px"; sta.className += " ov";
     swrap.style.flex = "none"; swrap.style.border = "0.5px solid var(--ln)"; swrap.style.borderRadius = "var(--radius,8px)"; swrap.style.overflow = "hidden"; swrap.appendChild(shl); swrap.appendChild(sta);
     function sRefresh() { shl.innerHTML = highlight(sta.value, K) + "\n"; shl.scrollTop = sta.scrollTop; shl.scrollLeft = sta.scrollLeft; }
     sta.addEventListener("input", sRefresh); sta.addEventListener("scroll", sRefresh); sRefresh();
@@ -529,7 +544,43 @@
       m += "\nPlease answer my comments, then show my code again in a new cell with line-by-line notes (what is good, what is wrong, what to tweak). Do not write the full solution.";
       sendOut(m);
     }
+    var cal = { f: 13, l: 20 };
+    function measure() {
+      var tp = document.createElement("textarea"), sp = document.createElement("span"), M = new Array(101).join("M"), rows = [], i;
+      for (i = 0; i < 12; i++) rows.push(M);
+      var txt = rows.join("\n");
+      tp.className = "cp-ta"; tp.setAttribute("wrap", "off"); tp.setAttribute("tabindex", "-1"); tp.setAttribute("aria-hidden", "true"); tp.readOnly = true;
+      tp.style.cssText = "position:absolute;left:0;top:0;width:60px;height:10px;padding:0;border:0;margin:0;visibility:hidden;overflow:auto";
+      tp.value = txt;
+      sp.style.cssText = "position:absolute;left:0;top:0;display:inline-block;white-space:pre;visibility:hidden;padding:0;margin:0";
+      sp.textContent = txt;
+      wrap.appendChild(tp); hl.appendChild(sp);
+      var o = { cwT: tp.scrollWidth / 100, lhT: tp.scrollHeight / 12, cwP: sp.offsetWidth / 100, lhP: sp.offsetHeight / 12 };
+      wrap.removeChild(tp); hl.removeChild(sp);
+      return o;
+    }
+    function setPlain(on) { if (on) root.classList.add("cp-plain"); else root.classList.remove("cp-plain"); }
+    function calibrate() {
+      if (cfg.plain) return setPlain(true);
+      if (!document.body.contains(root)) return;
+      for (var pass = 0; pass < 3; pass++) {
+        var m = measure();
+        if (!m.cwT || !m.cwP || !m.lhT || !m.lhP) return;
+        var rw = m.cwT / m.cwP, rh = m.lhT / m.lhP;
+        if (Math.abs(rw - 1) < 0.004 && Math.abs(rh - 1) < 0.01) return setPlain(false);
+        cal.f = cal.f * rw; cal.l = cal.l * rh;
+        if (cal.f < 8 || cal.f > 24 || cal.l < 10 || cal.l > 40) return setPlain(true);
+        root.style.setProperty("--hfs", cal.f.toFixed(3) + "px"); root.style.setProperty("--plh", cal.l.toFixed(3) + "px");
+      }
+      var m2 = measure();
+      setPlain(!m2.cwT || !m2.cwP || Math.abs(m2.cwT / m2.cwP - 1) > 0.02 || Math.abs(m2.lhT / m2.lhP - 1) > 0.03);
+    }
+    root.__cpCal = calibrate;
+    if (!root.__cpResize) { root.__cpResize = true; global.addEventListener("resize", function () { if (root.__cpCal) root.__cpCal(); }); }
     sync();
+    calibrate();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(calibrate);
+    setTimeout(calibrate, 500);
     if (cfg.result) fromResult(cfg.result);
     return { getCode: function () { return ta.value; } };
   }

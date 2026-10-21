@@ -46,3 +46,7 @@ Tests are `[name, body]`. A third element `true` hides the test until Submit.
 - `className`: the Java class the tests call (default `Solution`, `Main` in editor-only mode).
 
 Keep non-ASCII characters out of `codepad.js` (use `·` style escapes).
+
+## Phone keyboards (v2.1)
+
+The editor is a transparent textarea over a colored layer, so both must use identical text metrics. On load (and on resize and font load) it measures both layers and matches them, which fixes the cursor drifting to the right of the text on phones where text auto-sizing changes one layer. If they cannot be matched it falls back to a plain editor without colors, so the cursor is always where the text is. Enter from a phone keyboard auto-indents once, and autocorrect and autocapitalize are off. Set `plain: true` to force the plain editor.
