@@ -15,7 +15,7 @@
     });
     return skP;
   }
-  var VERSION = "2.1";
+  var VERSION = "2.2";
   var SQL_URL = "https://cdn.jsdelivr.net/npm/sql.js@1.15.1/dist/sql-asm.js";
   var SQL_WASM_URL = "https://cdn.jsdelivr.net/npm/sql.js@1.15.1/dist/sql-wasm-inline.js";
   var LANGS = {
@@ -63,7 +63,12 @@
     ".cp select.cp-sel{font:inherit;font-size:12px;padding:2px 8px;border-radius:999px;border:0.5px solid var(--ln);background:var(--bg);color:var(--mut)}" +
     ".cp,.cp *{-webkit-text-size-adjust:100%;text-size-adjust:100%}" +
     ".cp-ta,.cp-hl{letter-spacing:0;word-spacing:0;font-kerning:none;font-variant-ligatures:none;font-feature-settings:'liga' 0,'calt' 0;text-rendering:auto;overflow-wrap:normal;word-break:normal;text-indent:0;white-space:pre}" +
-    ".cp-plain .cp-hl{display:none}.cp-plain .cp-wrap .cp-ta{color:var(--fg)}";
+    ".cp-plain .cp-hl{display:none}.cp-plain .cp-wrap .cp-ta{color:var(--fg)}" +
+    ".cp-edbox{position:relative}" +
+    ".cp-pop{position:absolute;z-index:20;left:52px;right:12px;max-width:440px;max-height:220px;overflow:auto;border:0.5px solid var(--ln);box-shadow:0 4px 16px rgba(0,0,0,.22);font-size:13px;line-height:1.45}" +
+    ".cp-pop[hidden]{display:none}.cp-pop p+p{margin-top:6px}.cp-pop .t{font-weight:500}" +
+    ".cp-ln.sel{outline:1.5px solid var(--clay);outline-offset:-2px}.cp-ln.n-issue:focus-visible,.cp-ln.n-praise:focus-visible,.cp-ln.n-tip:focus-visible{outline:1.5px solid var(--clay);outline-offset:-2px}" +
+    ".cp-nb{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.cp-nb .cp-mut{flex:1;min-width:160px}";
   function codeAttrs(t) {
     t.spellcheck = false;
     t.setAttribute("wrap", "off"); t.setAttribute("autocapitalize", "off"); t.setAttribute("autocorrect", "off");
@@ -347,6 +352,9 @@
     ta = el("textarea", "cp-ta"); hl = el("pre", "cp-hl");
     codeAttrs(ta); ta.setAttribute("aria-label", LB + " code"); ta.value = snap;
     wrap.appendChild(hl); wrap.appendChild(ta); ed.appendChild(gut); ed.appendChild(wrap);
+    var edBox = el("div", "cp-edbox"), pop = el("div", "cp-card cp-pop"), popLine = 0, popSnap = "", listOpen = false;
+    pop.hidden = true; pop.setAttribute("role", "dialog"); pop.setAttribute("aria-label", "Note for this line");
+    edBox.appendChild(ed); edBox.appendChild(pop);
     var noteBox = el("div", "cp-stack");
     var tabs = el("div", "cp-tabs"), tP = el("button", "cp-tab on", "Problem"), tS = el("button", "cp-tab", "Scratchpad");
     tabs.appendChild(tP); tabs.appendChild(tS);
@@ -397,7 +405,7 @@
     var cList = el("div", "cp-stack"), hBox = el("div", "cp-stack"), solBtn = btn("Show solution", "", showSol); solBtn.hidden = true;
     var res = el("div", "cp-stack"), sendBox = el("div", "cp-stack");
     var main = el("div", "cp-stack");
-    [desc, ed, bar, cIn, noteBox, cList, hBox, solBtn, res, sendBox].forEach(function (x) { main.appendChild(x); });
+    [desc, edBox, bar, cIn, noteBox, cList, hBox, solBtn, res, sendBox].forEach(function (x) { main.appendChild(x); });
     tP.onclick = function () { main.hidden = false; scratch.hidden = true; tP.className = "cp-tab on"; tS.className = "cp-tab"; };
     tS.onclick = function () { main.hidden = true; scratch.hidden = false; tS.className = "cp-tab on"; tP.className = "cp-tab"; };
     root.appendChild(head); if (!SANDBOX) root.appendChild(tabs); root.appendChild(main); if (!SANDBOX) root.appendChild(scratch);
@@ -411,25 +419,72 @@
       var inner = el("div"); gut.appendChild(inner);
       for (var i = 1; i <= n; i++) {
         var d = el("div", "cp-ln", String(i)), kind = null;
-        notes.forEach(function (nt) { if (nt.line === i) kind = nt.type || "tip"; });
-        if (kind) { d.className += " n-" + kind; (function (ln) { d.onclick = function () { var c = noteBox.querySelectorAll(".cp-card"); for (var k = 0; k < c.length; k++) c[k].classList.toggle("on", c[k].getAttribute("data-l") === String(ln)); }; })(i); }
+        notes.forEach(function (nt) { if (nt.line === i) { var tt = nt.type || "tip"; if (!kind || tt === "issue") kind = tt; } });
+        if (kind) {
+          d.className += " n-" + kind; d.setAttribute("role", "button"); d.setAttribute("tabindex", "0"); d.setAttribute("aria-label", "Show note for line " + i);
+          (function (ln) {
+            d.onclick = function () { openPop(ln); };
+            d.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPop(ln); } };
+          })(i);
+        }
+        if (popLine === i) d.className += " sel";
         if (comments.some(function (c) { return i >= c.a && i <= c.b; })) d.className += " c";
         inner.appendChild(d);
       }
       inner.style.marginTop = -ta.scrollTop + "px";
+      if (popLine) { if (ta.value !== popSnap) closePop(); else placePop(); }
       renderNotes();
     }
+    function notesFor(ln) { return notes.filter(function (nt) { return nt.line === ln; }); }
+    function closePop() {
+      if (!popLine) return;
+      popLine = 0; pop.hidden = true;
+      var s = gut.querySelectorAll(".cp-ln.sel"); for (var k = 0; k < s.length; k++) s[k].classList.remove("sel");
+      var c = noteBox.querySelectorAll(".cp-card.on"); for (var j = 0; j < c.length; j++) c[j].classList.remove("on");
+    }
+    function placePop() {
+      if (!popLine) return;
+      var top = 10 + (popLine - 1) * 20 - ta.scrollTop, edH = ed.clientHeight;
+      if (edH && (top < -20 || top > edH)) { closePop(); return; }
+      var h = pop.offsetHeight, y = top + 24;
+      if (y + h > edH + 8 && top - h - 4 >= -4) y = top - h - 4;
+      pop.style.top = Math.max(y, 4) + "px";
+    }
+    function openPop(ln) {
+      if (popLine === ln) { closePop(); return; }
+      var ns = notesFor(ln); if (!ns.length) return;
+      closePop();
+      popLine = ln; popSnap = ta.value;
+      var kind = ns[0].type || "tip"; ns.forEach(function (nt) { if (nt.type === "issue") kind = "issue"; });
+      pop.className = "cp-card cp-pop n-" + kind; pop.innerHTML = "";
+      var hd = el("p", "t", "Line " + ln + " \u00b7 " + kind), x = el("button", "cp-x", "\u00d7");
+      x.setAttribute("aria-label", "Close note"); x.onclick = function (e) { e.stopPropagation(); closePop(); };
+      hd.appendChild(x); pop.appendChild(hd);
+      ns.forEach(function (nt) { pop.appendChild(el("p", "", (ns.length > 1 ? (nt.type || "tip") + ": " : "") + nt.text)); });
+      var mine = gut.firstChild && gut.firstChild.children[ln - 1]; if (mine) mine.classList.add("sel");
+      var cs = noteBox.querySelectorAll(".cp-card"); for (var k = 0; k < cs.length; k++) cs[k].classList.toggle("on", cs[k].getAttribute("data-l") === String(ln));
+      pop.hidden = false; placePop();
+    }
+    var onDocClick = function (e) { if (popLine && !pop.contains(e.target) && !gut.contains(e.target)) closePop(); };
+    if (root.__cpDoc) document.removeEventListener("click", root.__cpDoc);
+    root.__cpDoc = onDocClick; document.addEventListener("click", onDocClick);
+    edBox.addEventListener("keydown", function (e) { if (e.key === "Escape") closePop(); });
     function renderNotes() {
       noteBox.innerHTML = "";
       if (!notes.length) return;
-      noteBox.appendChild(el("div", "cp-mut", "Claude's notes" + (ta.value !== snap ? " (you've edited the code since, so line numbers may have moved)" : "")));
+      var hd = el("div", "cp-nb"), tg = el("button", "cp-b", listOpen ? "Hide all notes" : "Show all notes (" + notes.length + ")");
+      tg.onclick = function () { listOpen = !listOpen; renderNotes(); };
+      hd.appendChild(el("span", "cp-mut", "Click a colored line number to read its note." + (ta.value !== snap ? " You have edited the code since, so line numbers may have moved." : "")));
+      hd.appendChild(tg); noteBox.appendChild(hd);
+      if (!listOpen) return;
       notes.forEach(function (nt) {
         var c = el("div", "cp-card n-" + (nt.type || "tip")); c.setAttribute("data-l", String(nt.line));
+        if (popLine === nt.line) c.classList.add("on");
         c.appendChild(el("p", "t", "Line " + nt.line + " \u00b7 " + (nt.type || "tip")));
         c.appendChild(el("p", "", nt.text)); noteBox.appendChild(c);
       });
     }
-    ta.addEventListener("scroll", function () { var f = gut.firstChild; if (f) f.style.marginTop = -ta.scrollTop + "px"; hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; });
+    ta.addEventListener("scroll", function () { var f = gut.firstChild; if (f) f.style.marginTop = -ta.scrollTop + "px"; hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; if (popLine) placePop(); });
     ta.addEventListener("input", sync);
     attach(ta, attOpts, function () { bRun.click(); }, sync);
     function setStatus(t, k) { status.textContent = t; status.className = "cp-pill " + k; }
@@ -464,14 +519,33 @@
         t.appendChild(x); d.appendChild(t); d.appendChild(el("p", "", c.text)); cList.appendChild(d);
       });
     }
+    function fence(code) {
+      var f = "```", n = (String(code).match(/`+/g) || []).reduce(function (a, s) { return Math.max(a, s.length); }, 0);
+      while (f.length <= n) f += "`";
+      return f;
+    }
+    function copyText(t, b) {
+      var done = function () { b.textContent = "Copied"; };
+      var legacy = function () { try { t.focus(); t.select(); document.execCommand("copy"); done(); } catch (e2) { b.textContent = "Press Ctrl or Cmd+C"; } };
+      try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t.value).then(done, legacy); return; } } catch (e) {}
+      legacy();
+    }
+    var sentAt = 0;
     function sendOut(m) {
       sendBox.innerHTML = "";
-      if (typeof global.sendPrompt === "function") { global.sendPrompt(m); setStatus("Sent to Claude", "ok"); }
-      else { var t = el("textarea", "cp-ta"); t.value = m; t.style.height = "140px"; t.style.border = "0.5px solid var(--ln)"; sendBox.appendChild(el("div", "cp-mut", "Copy this and paste it into the chat:")); sendBox.appendChild(t); t.select(); }
+      var now = Date.now(), ok = false;
+      if (now - sentAt < 800) return;
+      if (typeof global.sendPrompt === "function") { try { global.sendPrompt(m); ok = true; } catch (e) { ok = false; } }
+      if (ok) { sentAt = now; setStatus("Sent to Claude", "ok"); return; }
+      setStatus("Not sent. Copy it instead", "er");
+      var t = el("textarea", "cp-ta"); t.value = m; t.style.height = "140px"; t.style.border = "0.5px solid var(--ln)";
+      var cb = btn("Copy message", "go", function () { copyText(t, cb); });
+      sendBox.appendChild(el("div", "cp-mut", "Sending did not go through. Copy this message and paste it into the chat:"));
+      sendBox.appendChild(t); sendBox.appendChild(cb);
     }
     function askJava(mode, code, cn) {
       var what = mode === "main" ? "compile and run the main method of" : mode === "submit" ? "compile and run all the tests (including hidden ones) for" : "compile and run the sample tests for";
-      sendOut("Please run my Java code: " + what + " this" + (cfg.title && !SANDBOX && mode !== "main" ? " (\"" + cfg.title + "\")" : "") + ".\n\nClass name: " + cn + "\nMode: " + mode + "\n\n```java\n" + code + "\n```\n\nCompile and run it with javac in your workspace, then show the result in a new cell with this same code. If you cannot run Java here, say so plainly instead of guessing the output.");
+      sendOut("Please run my Java code: " + what + " this" + (cfg.title && !SANDBOX && mode !== "main" ? " (\"" + cfg.title + "\")" : "") + ".\n\nClass name: " + cn + "\nMode: " + mode + "\n\n" + fence(code) + "java\n" + code + "\n" + fence(code) + "\n\nCompile and run it with javac in your workspace, then show the result in a new cell with this same code. If you cannot run Java here, say so plainly instead of guessing the output.");
     }
     function classify(r) {
       if (!r.err) return null;
@@ -537,7 +611,7 @@
     }
     function send() {
       var m = SANDBOX ? "Please review my " + LB + " code from the editor.\n\n" : "Please review my code for \"" + title + "\".\n\n";
-      m += "```" + L + "\n" + ta.value + "\n```\n\n";
+      m += fence(ta.value) + L + "\n" + ta.value + "\n" + fence(ta.value) + "\n\n";
       m += last ? "Last " + last.mode + ": " + last.v + (last.n ? ", " + last.pass + " of " + last.n + " tests" : "") + ", " + last.ms + " ms" + (last.first ? ". First failing test: " + last.first : "") + (last.err ? ". Error: " + last.err : "") + ".\n" : "I haven't run it yet.\n";
       if (!SANDBOX) m += "Hints used: " + shown + " of " + hints.length + ".\n";
       if (comments.length) { m += "\nMy comments:\n"; comments.forEach(function (c) { m += "- " + (c.a === c.b ? "Line " + c.a : "Lines " + c.a + "-" + c.b) + " (" + c.snip + "): " + c.text + "\n"; }); }
