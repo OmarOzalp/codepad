@@ -47,6 +47,14 @@ Tests are `[name, body]`. A third element `true` hides the test until Submit.
 
 Keep non-ASCII characters out of `codepad.js` (use `·` style escapes).
 
+## Line notes as popups (v2.2)
+
+When a cell has `notes`, the colored line numbers (red issue, green praise, blue tip) are buttons. Click one, or focus it and press Enter, to open that line's note in a popup next to the line. Click the same number again, press Escape, click elsewhere, or edit the code to close it. If a line has several notes, the popup shows them all. The full list of notes sits below the editor, collapsed behind a "Show all notes" button.
+
+## Send to Claude reliability (v2.2)
+
+Send to Claude no longer fails silently. If `sendPrompt` throws or does not exist, the cell shows the message in a box with a Copy message button instead of reporting success. Double clicks within a short window are ignored. Code that itself contains triple backticks is wrapped in a longer fence so the message does not break apart.
+
 ## Phone keyboards (v2.1)
 
 The editor is a transparent textarea over a colored layer, so both must use identical text metrics. On load (and on resize and font load) it measures both layers and matches them, which fixes the cursor drifting to the right of the text on phones where text auto-sizing changes one layer. If they cannot be matched it falls back to a plain editor without colors, so the cursor is always where the text is. Enter from a phone keyboard auto-indents once, and autocorrect and autocapitalize are off. Set `plain: true` to force the plain editor.
